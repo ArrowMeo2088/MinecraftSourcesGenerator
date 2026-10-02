@@ -1,0 +1,53 @@
+# Generate and upload sources for one Minecraft version id you type in.
+# Prefer running UpdateCache first for shared Gradle/work cache hits.
+# Artifact retention 1 day — download then delete. Do not leave decompiled sources public long-term.
+name: SelectVersion
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Minecraft version id (e.g. 1.21.8 or 26.2)
+        type: string
+        required: true
+      force:
+        description: Rebuild even if sources already exist (-Pforce)
+        type: boolean
+        default: false
+
+concurrency:
+  group: select-version
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  generate:
+    name: ${{ inputs.version }}
+    runs-on: windows-2025
+    timeout-minutes: 360
+    steps:
+      - name: Validate version input
+        shell: pwsh
+        env:
+          MC_VERSION: ${{ inputs.version }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:MC_VERSION)) {
+            Write-Error "version input must not be empty."
+            exit 1
+          }
+          Write-Host "Generating Minecraft $($env:MC_VERSION.Trim())"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate, pack, and upload
+        uses: ./.github/actions/generate-mc-sources
+        with:
+          version: ${{ inputs.version }}
+          force: ${{ inputs.force }}
+          upload_artifact: "true"

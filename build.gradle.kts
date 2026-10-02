@@ -33,7 +33,7 @@ fun JavaExec.configureGenerator() {
     group = "minecraft sources"
     mainClass = "com.deathmotion.mcsources.cli.Main"
     classpath = sourceSets["main"].runtimeClasspath
-    maxHeapSize = "8g"
+    maxHeapSize = (project.findProperty("mainHeap") as String?) ?: "8g"
     systemProperty("mcsg.sourcesDir", sourcesDir.asFile.absolutePath)
     systemProperty("mcsg.workDir", workDir.asFile.absolutePath)
     systemProperty("mcsg.projectDir", layout.projectDirectory.asFile.absolutePath)

@@ -1,0 +1,115 @@
+# Warm shared Gradle + work caches and verify generation.
+# Run this before MainVersion / SelectVersion for better cache hits.
+# Does NOT upload source artifacts. Decompiled output is Mojang copyright — keep runs private/short-lived.
+name: UpdateCache
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild seed versions even if sources already exist (-Pforce)
+        type: boolean
+        default: false
+      seed_set:
+        description: Versions used to warm work/decompile caches
+        type: choice
+        default: era
+        options:
+          - era
+          - main
+
+concurrency:
+  group: update-cache
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  prepare:
+    name: Resolve seed matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      max_parallel: ${{ steps.resolve.outputs.max_parallel }}
+    steps:
+      - name: Build version JSON
+        id: resolve
+        shell: bash
+        run: |
+          if [ "${{ inputs.seed_set }}" = "main" ]; then
+            matrix='{"include":[{"version":"1.7.10"},{"version":"1.8.9"},{"version":"1.9.4"},{"version":"1.10.2"},{"version":"1.11.2"},{"version":"1.12.2"},{"version":"1.13.2"},{"version":"1.14.4"},{"version":"1.15.2"},{"version":"1.16.5"},{"version":"1.17.1"},{"version":"1.18.2"},{"version":"1.19.2"},{"version":"1.20.1"},{"version":"1.21.1"},{"version":"26.2"}]}'
+            echo "max_parallel=8" >> "$GITHUB_OUTPUT"
+          else
+            matrix='{"include":[{"version":"1.12.2"},{"version":"1.20.1"},{"version":"26.2"}]}'
+            echo "max_parallel=3" >> "$GITHUB_OUTPUT"
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Seed set=${{ inputs.seed_set }} matrix=$matrix"
+
+  gradle-warm:
+    name: Warm Gradle cache
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            **/libs.versions.toml
+            gradle.properties
+
+      - name: Compile and listVersions
+        shell: pwsh
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g -Dorg.gradle.daemon=false"
+        run: |
+          & .\gradlew.bat classes listVersions --no-daemon
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          @"
+          ## UpdateCache — Gradle warm
+          - Ran ``classes`` + ``listVersions`` on windows-2025
+          - Seed set: ``${{ inputs.seed_set }}``
+          - Next: seed-generate warms work/decompile-cache (no artifacts)
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+  seed-generate:
+    name: ${{ matrix.version }}
+    needs:
+      - prepare
+      - gradle-warm
+    runs-on: windows-2025
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(needs.prepare.outputs.max_parallel) }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate and cache (no artifact)
+        uses: ./.github/actions/generate-mc-sources
+        with:
+          version: ${{ matrix.version }}
+          force: ${{ inputs.force }}
+          upload_artifact: "false"

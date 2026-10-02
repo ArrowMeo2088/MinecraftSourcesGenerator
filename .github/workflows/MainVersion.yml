@@ -1,0 +1,171 @@
+# Checkbox-select common Minecraft versions; selected ones run in parallel and upload per-version zips.
+# Prefer running UpdateCache first for shared Gradle/work cache hits.
+# Artifacts retention 1 day — download then delete. Do not leave decompiled sources public long-term.
+name: MainVersion
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if sources already exist (-Pforce)
+        type: boolean
+        default: false
+      v_1_7_10:
+        description: "1.7.10"
+        type: boolean
+        default: false
+      v_1_8_9:
+        description: "1.8.9"
+        type: boolean
+        default: false
+      v_1_9_4:
+        description: "1.9.4"
+        type: boolean
+        default: false
+      v_1_10_2:
+        description: "1.10.2"
+        type: boolean
+        default: false
+      v_1_11_2:
+        description: "1.11.2"
+        type: boolean
+        default: false
+      v_1_12_2:
+        description: "1.12.2"
+        type: boolean
+        default: false
+      v_1_13_2:
+        description: "1.13.2"
+        type: boolean
+        default: false
+      v_1_14_4:
+        description: "1.14.4"
+        type: boolean
+        default: false
+      v_1_15_2:
+        description: "1.15.2"
+        type: boolean
+        default: false
+      v_1_16_5:
+        description: "1.16.5"
+        type: boolean
+        default: false
+      v_1_17_1:
+        description: "1.17.1"
+        type: boolean
+        default: false
+      v_1_18_2:
+        description: "1.18.2"
+        type: boolean
+        default: false
+      v_1_19_2:
+        description: "1.19.2"
+        type: boolean
+        default: false
+      v_1_20_1:
+        description: "1.20.1"
+        type: boolean
+        default: false
+      v_1_21_1:
+        description: "1.21.1"
+        type: boolean
+        default: false
+      v_26_2:
+        description: "26.2"
+        type: boolean
+        default: false
+
+concurrency:
+  group: main-version
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  select:
+    name: Build version matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - name: Collect checked versions
+        id: build
+        shell: bash
+        env:
+          V_1_7_10: ${{ inputs.v_1_7_10 }}
+          V_1_8_9: ${{ inputs.v_1_8_9 }}
+          V_1_9_4: ${{ inputs.v_1_9_4 }}
+          V_1_10_2: ${{ inputs.v_1_10_2 }}
+          V_1_11_2: ${{ inputs.v_1_11_2 }}
+          V_1_12_2: ${{ inputs.v_1_12_2 }}
+          V_1_13_2: ${{ inputs.v_1_13_2 }}
+          V_1_14_4: ${{ inputs.v_1_14_4 }}
+          V_1_15_2: ${{ inputs.v_1_15_2 }}
+          V_1_16_5: ${{ inputs.v_1_16_5 }}
+          V_1_17_1: ${{ inputs.v_1_17_1 }}
+          V_1_18_2: ${{ inputs.v_1_18_2 }}
+          V_1_19_2: ${{ inputs.v_1_19_2 }}
+          V_1_20_1: ${{ inputs.v_1_20_1 }}
+          V_1_21_1: ${{ inputs.v_1_21_1 }}
+          V_26_2: ${{ inputs.v_26_2 }}
+        run: |
+          versions=()
+          [[ "$V_1_7_10" == "true" ]] && versions+=("1.7.10")
+          [[ "$V_1_8_9" == "true" ]] && versions+=("1.8.9")
+          [[ "$V_1_9_4" == "true" ]] && versions+=("1.9.4")
+          [[ "$V_1_10_2" == "true" ]] && versions+=("1.10.2")
+          [[ "$V_1_11_2" == "true" ]] && versions+=("1.11.2")
+          [[ "$V_1_12_2" == "true" ]] && versions+=("1.12.2")
+          [[ "$V_1_13_2" == "true" ]] && versions+=("1.13.2")
+          [[ "$V_1_14_4" == "true" ]] && versions+=("1.14.4")
+          [[ "$V_1_15_2" == "true" ]] && versions+=("1.15.2")
+          [[ "$V_1_16_5" == "true" ]] && versions+=("1.16.5")
+          [[ "$V_1_17_1" == "true" ]] && versions+=("1.17.1")
+          [[ "$V_1_18_2" == "true" ]] && versions+=("1.18.2")
+          [[ "$V_1_19_2" == "true" ]] && versions+=("1.19.2")
+          [[ "$V_1_20_1" == "true" ]] && versions+=("1.20.1")
+          [[ "$V_1_21_1" == "true" ]] && versions+=("1.21.1")
+          [[ "$V_26_2" == "true" ]] && versions+=("26.2")
+
+          if [ ${#versions[@]} -eq 0 ]; then
+            echo "::error::Select at least one Minecraft version checkbox."
+            exit 1
+          fi
+
+          json='{"include":['
+          first=1
+          for v in "${versions[@]}"; do
+            if [ $first -eq 1 ]; then
+              first=0
+            else
+              json+=','
+            fi
+            json+="{\"version\":\"$v\"}"
+          done
+          json+=']}'
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo "Selected: ${versions[*]}"
+
+  generate:
+    name: ${{ matrix.version }}
+    needs: select
+    runs-on: windows-2025
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate, pack, and upload
+        uses: ./.github/actions/generate-mc-sources
+        with:
+          version: ${{ matrix.version }}
+          force: ${{ inputs.force }}
+          upload_artifact: "true"
