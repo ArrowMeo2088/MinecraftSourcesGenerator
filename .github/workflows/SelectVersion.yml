@@ -1,5 +1,5 @@
 # Generate and upload sources for one Minecraft version id you type in.
-# Prefer running UpdateCache first for shared Gradle/work cache hits.
+# Optional: run UpdateCache after dependency bumps to pre-warm Gradle only; otherwise go straight here.
 # Artifact retention 1 day — download then delete. Do not leave decompiled sources public long-term.
 name: SelectVersion
 

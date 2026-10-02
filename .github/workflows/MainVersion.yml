@@ -1,5 +1,5 @@
 # Checkbox-select common Minecraft versions; selected ones run in parallel and upload per-version zips.
-# Prefer running UpdateCache first for shared Gradle/work cache hits.
+# Optional: run UpdateCache after dependency bumps to pre-warm Gradle only; otherwise go straight here.
 # Artifacts retention 1 day — download then delete. Do not leave decompiled sources public long-term.
 name: MainVersion
 
